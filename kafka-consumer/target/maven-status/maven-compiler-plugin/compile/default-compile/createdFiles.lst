@@ -1,0 +1,5 @@
+com\demo\kafka\config\KafkaConsumerConfig.class
+com\demo\kafka\model\OrderEvent.class
+com\demo\kafka\consumer\OrderEventConsumer.class
+com\demo\kafka\model\OrderEvent$OrderEventBuilder.class
+com\demo\kafka\KafkaConsumerApplication.class

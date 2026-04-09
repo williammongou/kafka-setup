@@ -11,9 +11,10 @@ services:
     image: apache/kafka:3.7.0
     container_name: kafka
     ports:
-      # Exposes Kafka on your host machine at localhost:9092
-      # Your Spring Boot producer connects here
+      # Port 9092 for internal Docker network communication
       - "9092:9092"
+      # Port 9093 for host machine connections (Spring Boot app)
+      - "9093:9093"
     environment:
       # Each broker in a cluster has a unique ID
       KAFKA_NODE_ID: 1
@@ -23,19 +24,21 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
 
       # PLAINTEXT://0.0.0.0:9092  → listens for producer/consumer connections on all interfaces
-      # CONTROLLER://0.0.0.0:9093 → internal port used for KRaft leader election
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # PLAINTEXT_HOST://0.0.0.0:9093 → separate listener for host machine connections
+      # CONTROLLER://0.0.0.0:9094 → internal port used for KRaft leader election
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093,CONTROLLER://0.0.0.0:9094
 
       # This is what Kafka tells clients to connect to.
-      # localhost:9092 works when your Spring Boot app runs on the same machine.
-      # When you move to EC2, this becomes the EC2 public IP.
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      # PLAINTEXT://kafka:9092 → for Docker containers (kafka-ui connects here)
+      # PLAINTEXT_HOST://localhost:9093 → for host machine (Spring Boot app connects here)
+      # When you move to EC2, change localhost to the EC2 public IP
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
 
       # Tells the controller where to find quorum voters: nodeId@host:port
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9094
 
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
 
       # Since we have only 1 broker, replication factor must be 1
       # (can't replicate across brokers that don't exist)
@@ -70,3 +73,21 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+
+  # Optional: Kafka Consumer (Spring Boot app)
+  # NOTE: It's recommended to run Spring Boot apps directly on the host during development
+  # Use this only if you want to run the consumer in Docker
+  # To start: docker compose up kafka-consumer -d
+  kafka-consumer:
+    build:
+      context: ./kafka-consumer
+      dockerfile: Dockerfile
+    container_name: kafka-consumer
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_CONSUMER_POLL_INTERVAL_MS: 3000
+    depends_on:
+      kafka:
+        condition: service_healthy
+    profiles:
+      - consumer  # This service only starts when explicitly requested
